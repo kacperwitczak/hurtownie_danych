@@ -1,0 +1,56 @@
+CREATE TABLE Krupierzy (
+    ID INT PRIMARY KEY,
+    Imie NVARCHAR(50),
+    Nazwisko NVARCHAR(50),
+    Pesel BIGINT CHECK (LEN(Pesel) = 11),
+    PoczatekPracy DATE
+);
+
+CREATE TABLE TypGry (
+    ID INT PRIMARY KEY,
+    NazwaGry NVARCHAR(100)
+);
+
+CREATE TABLE Stoly (
+    ID INT PRIMARY KEY,  -- Klucz główny
+    FK_TypGryID INT FOREIGN KEY REFERENCES TypGry(ID),
+    MinimalnaStawka DECIMAL(10, 2) CHECK (MinimalnaStawka >= 1),
+    MaksymalnaStawka DECIMAL(10, 2) NULL,
+    LiczbaMiejsc SMALLINT
+);
+
+
+CREATE TABLE Lokalizacje (
+    ID INT PRIMARY KEY,
+    Pietro SMALLINT,
+    Rzad SMALLINT,
+    Kolumna SMALLINT
+);
+
+CREATE TABLE UstawienieStolu (
+    ID INT PRIMARY KEY,
+    DataStart DATE,
+    DataKoniec DATE NULL,
+    FK_StolID INT FOREIGN KEY REFERENCES Stoly(ID),
+    FK_LokalizacjaID INT FOREIGN KEY REFERENCES Lokalizacje(ID)
+);
+
+CREATE TABLE Rozgrywki (
+    ID INT PRIMARY KEY,
+    FK_KrupierID INT FOREIGN KEY REFERENCES Krupierzy(ID),
+    FK_UstawienieStoluID INT FOREIGN KEY REFERENCES UstawienieStolu(ID),
+    DataStart DATE,
+    DataKoniec DATE
+);
+
+CREATE TABLE TypTransakcji (
+    ID INT PRIMARY KEY,
+    Typ NVARCHAR(50)
+);
+
+CREATE TABLE Transakcje (
+    ID INT PRIMARY KEY,
+    FK_RozgrywkaID INT FOREIGN KEY REFERENCES Rozgrywki(ID),
+    FK_TypTransakcjiID INT FOREIGN KEY REFERENCES TypTransakcji(ID),
+    Kwota DECIMAL(10, 2)
+);
