@@ -6,8 +6,7 @@ using System.Collections.Concurrent;
 
 public class DataGeneratorService {
     private readonly ApplicationDbContext _context;
-    private readonly int n = 10;
-    private readonly int batchSize = 100; // Size of each batch for processing
+    private readonly int n = 50;
 
     public DataGeneratorService(ApplicationDbContext context) {
         _context = context;
@@ -61,37 +60,15 @@ public class DataGeneratorService {
             .RuleFor(t => t.Rozgrywki, f => f.PickRandom(rozgrywki))
             .RuleFor(t => t.Kwota, f => f.Random.Decimal(1, 1000));
 
-        // Number of transactions to generate
-        var totalTransactions = n * n * n * n * n;
-        var batches = totalTransactions / batchSize;
+        var transakcje = new ConcurrentBag<Transakcje>();
 
-        var tasks = new ConcurrentBag<Task>();
-        for (int i = 0; i < batches; i++) {
-            var batchTransactions = new ConcurrentBag<Transakcje>();
-            var start = i * batchSize;
-            var end = Math.Min(start + batchSize, totalTransactions);
+        Parallel.For(0, n * n * n * n * n, _ => {
+            transakcje.Add(fakerTransakcje.Generate());
+        });
 
-            // Use Task.Run for each batch
-            tasks.Add(Task.Run(() => {
-                for (int j = start; j < end; j++) {
-                    var transakcja = fakerTransakcje.Generate();
-                    batchTransactions.Add(transakcja);
-                }
-            }));
-
-            // Insert the batch into the database after generating
-            if (i % 10 == 0 || i == batches - 1) { // Flush every 10 batches or on last batch
-                await Task.WhenAll(tasks);
-                await _context.Transakcje.AddRangeAsync(batchTransactions);
-                await SaveChanges();
-                Console.WriteLine($"Added batch {i + 1}/{batches} of Transakcje entries.");
-                tasks.Clear(); // Clear the tasks for the ne    xt batch
-            }
-        }
-
+        await _context.Transakcje.AddRangeAsync(transakcje);
         await SaveChanges();
-        Console.WriteLine($"Total Transakcje added: {totalTransactions} entries.");
-        Console.WriteLine($"Actual count: {_context.Transakcje.Count()}");
+        Console.WriteLine($"Added {transakcje.Count} Transakcje entries.");
     }
 
     public async Task SeedRozgrywki(int n) {
@@ -105,174 +82,82 @@ public class DataGeneratorService {
             .RuleFor(r => r.DataStart, f => f.Date.Past(2))
             .RuleFor(r => r.DataKoniec, (f, r) => f.Date.Between(r.DataStart, DateTime.Now));
 
-        // Number of games to generate
-        var totalRozgrywki = n * n * n * n;
-        var batches = totalRozgrywki / batchSize;
+        var rozgrywki = new ConcurrentBag<Rozgrywki>();
 
-        var tasks = new ConcurrentBag<Task>();
-        for (int i = 0; i < batches; i++) {
-            var batchRozgrywki = new ConcurrentBag<Rozgrywki>();
-            var start = i * batchSize;
-            var end = Math.Min(start + batchSize, totalRozgrywki);
+        Parallel.For(0, n * n * n * n, _ => {
+            rozgrywki.Add(fakerRozgrywki.Generate());
+        });
 
-            // Use Task.Run for each batch
-            tasks.Add(Task.Run(() => {
-                for (int j = start; j < end; j++) {
-                    var gra = fakerRozgrywki.Generate();
-                    batchRozgrywki.Add(gra);
-                }
-            }));
-
-            // Insert the batch into the database after generating
-            if (i % 10 == 0 || i == batches - 1) { // Flush every 10 batches or on last batch
-                await Task.WhenAll(tasks);
-                await _context.Rozgrywki.AddRangeAsync(batchRozgrywki);
-                await SaveChanges();
-                Console.WriteLine($"Added batch {i + 1}/{batches} of Rozgrywki entries.");
-                tasks.Clear(); // Clear the tasks for the next batch
-            }
-        }
-
+        await _context.Rozgrywki.AddRangeAsync(rozgrywki);
         await SaveChanges();
-        Console.WriteLine($"Total Rozgrywki added: {totalRozgrywki} entries.");
-        Console.WriteLine($"Actual count: {_context.Rozgrywki.Count()}");
+        Console.WriteLine($"Added {rozgrywki.Count} Rozgrywki entries.");
     }
 
     public async Task SeedUstawienieStolu(int n) {
         Console.WriteLine("Seeding UstawienieStolu...");
         var stolyQueue = new ConcurrentQueue<Stoly>(await _context.Stoly.ToListAsync());
         var lokalizacjeQueue = new ConcurrentQueue<Lokalizacje>(await _context.Lokalizacje.ToListAsync());
-        
-        var totalUstawienia = n * n * n; // Total number of entries to generate
-        var batches = (int)Math.Ceiling((double)totalUstawienia / batchSize); // Number of batches to create
-        var tasks = new ConcurrentBag<Task>();
+        var ustawienia = new ConcurrentBag<UstawienieStolu>();
 
         var fakerUstawienieStolu = new Faker<UstawienieStolu>()
             .RuleFor(u => u.DataStart, f => f.Date.Past(2))
             .RuleFor(u => u.DataKoniec, f => f.Date.Past(1));
 
-        for (int i = 0; i < batches; i++) {
-            var batchUstawienia = new ConcurrentBag<UstawienieStolu>();
-            var start = i * batchSize;
-            var end = Math.Min(start + batchSize, totalUstawienia);
-            
-            // Generate the batch entries
-            tasks.Add(Task.Run(() => {
-                for (int j = start; j < end; j++) {
-                    var ustawienieStolu = fakerUstawienieStolu.Generate();
-                    // Ensure that we dequeue items safely
-                    if (stolyQueue.TryDequeue(out var stol)) {
-                        ustawienieStolu.Stoly = stol;
-                    }
-                    if (lokalizacjeQueue.TryDequeue(out var lokalizacja)) {
-                        ustawienieStolu.Lokalizacje = lokalizacja;
-                    }
-                    batchUstawienia.Add(ustawienieStolu);
-                }
-            }));
-
-            // Insert the batch into the database after generating
-            if (i % 10 == 0 || i == batches - 1) { // Flush every 10 batches or on last batch
-                await Task.WhenAll(tasks); // Wait for all tasks to complete
-                await _context.UstawienieStolu.AddRangeAsync(batchUstawienia);
-                await SaveChanges();
-                Console.WriteLine($"Added batch {i + 1}/{batches} of UstawienieStolu entries.");
-                tasks.Clear(); // Clear the tasks for the next batch
+        Parallel.For(0, n * n * n, _ => {
+            var ustawienieStolu = fakerUstawienieStolu.Generate();
+            if (stolyQueue.TryDequeue(out var stol)) {
+                ustawienieStolu.Stoly = stol;
             }
-        }
+            if (lokalizacjeQueue.TryDequeue(out var lokalizacja)) {
+                ustawienieStolu.Lokalizacje = lokalizacja;
+            }
+            ustawienia.Add(ustawienieStolu);
+        });
 
+        await _context.UstawienieStolu.AddRangeAsync(ustawienia);
         await SaveChanges();
-        Console.WriteLine($"Total UstawienieStolu added: {totalUstawienia} entries.");
-        Console.WriteLine($"Actual count: {_context.UstawienieStolu.Count()}");
+        Console.WriteLine($"Added {ustawienia.Count} UstawienieStolu entries.");
     }
 
     public async Task SeedStoly(int n) {
         Console.WriteLine("Seeding Stoly...");
         var typyGier = await _context.TypGry.ToListAsync();
-        var totalStoly = n * n * n; // Total number of entries to generate
-        var batches = totalStoly / batchSize; // Number of batches to create
-
         var fakerStoly = new Faker<Stoly>()
             .RuleFor(s => s.MaksymalnaStawka, f => f.Random.Number(1, 100))
             .RuleFor(s => s.MinimalnaStawka, f => f.Random.Number(100, 1000))
             .RuleFor(s => s.LiczbaMiejsc, f => (short)f.Random.Number(1, 10))
             .RuleFor(s => s.TypGry, f => f.PickRandom(typyGier));
 
-        var tasks = new ConcurrentBag<Task>();
+        var stoly = new ConcurrentBag<Stoly>();
 
-        for (int i = 0; i < batches; i++) {
-            var batchStoly = new ConcurrentBag<Stoly>();
-            var start = i * batchSize;
-            var end = Math.Min(start + batchSize, totalStoly);
+        Parallel.For(0, n * n * n, _ => {
+            stoly.Add(fakerStoly.Generate());
+        });
 
-            // Generate the batch
-            tasks.Add(Task.Run(() => {
-                for (int j = start; j < end; j++) {
-                    var stol = fakerStoly.Generate();
-                    batchStoly.Add(stol);
-                }
-            }));
-
-            // Insert the batch into the database after generating
-            if (i % 10 == 0 || i == batches - 1) { // Flush every 10 batches or on last batch
-                await Task.WhenAll(tasks);
-                await _context.Stoly.AddRangeAsync(batchStoly);
-                await SaveChanges();
-                Console.WriteLine($"Added batch {i + 1}/{batches} of Stoly entries.");
-                tasks.Clear(); // Clear the tasks for the next batch
-            }
-        }
-
+        await _context.Stoly.AddRangeAsync(stoly);
         await SaveChanges();
-        Console.WriteLine($"Total Stoly added: {totalStoly} entries.");
-        Thread.Sleep(1000);
-        Console.WriteLine($"Actual count: {_context.Stoly.Count()}");
+        Console.WriteLine($"Added {stoly.Count} Stoly entries.");
     }
 
     public async Task SeedLokalizacje(int n) {
         Console.WriteLine("Seeding Lokalizacje...");
-        
         var lokalizacje = new ConcurrentBag<Lokalizacje>();
-        int totalLokalizacje = n * n * n; // Total number of entries to generate
-        int batches = totalLokalizacje / batchSize;
 
-        var tasks = new ConcurrentBag<Task>();
+        Parallel.For(0, n, i => {
+            Parallel.For(0, n, j => {
+                Parallel.For(0, n, k => {
+                    lokalizacje.Add(new Lokalizacje {
+                        Pietro = (short)i,
+                        Rzad = (short)j,
+                        Kolumna = (short)k
+                    });
+                });
+            });
+        });
 
-        for (int i = 0; i < batches; i++) {
-            var batchLokalizacje = new ConcurrentBag<Lokalizacje>();
-            var start = i * batchSize;
-            var end = Math.Min(start + batchSize, totalLokalizacje);
-
-            // Generate the batch
-            tasks.Add(Task.Run(() => {
-                for (int j = start; j < end; j++) {
-                    // Calculate the i, j, k coordinates
-                    int iCoord = j / (n * n);
-                    int jCoord = (j / n) % n;
-                    int kCoord = j % n;
-
-                    var lokalizacja = new Lokalizacje {
-                        Pietro = (short)iCoord,
-                        Rzad = (short)jCoord,
-                        Kolumna = (short)kCoord
-                    };
-                    batchLokalizacje.Add(lokalizacja);
-                }
-            }));
-
-            // Insert the batch into the database after generating
-            if (i % 10 == 0 || i == batches - 1) { // Flush every 10 batches or on last batch
-                await Task.WhenAll(tasks);
-                await _context.Lokalizacje.AddRangeAsync(batchLokalizacje);
-                await SaveChanges();
-                Console.WriteLine($"Added batch {i + 1}/{batches} of Lokalizacje entries.");
-                tasks.Clear(); // Clear the tasks for the next batch
-            }
-        }
-        
+        await _context.Lokalizacje.AddRangeAsync(lokalizacje);
         await SaveChanges();
-        Console.WriteLine($"Total Lokalizacje added: {totalLokalizacje} entries.");
-        Console.WriteLine($"Actual count: {_context.Lokalizacje.Count()}");
+        Console.WriteLine($"Added {lokalizacje.Count} Lokalizacje entries.");
     }
 
     public async Task SeedKrupierzy(int n) {
@@ -283,11 +168,15 @@ public class DataGeneratorService {
             .RuleFor(k => k.Pesel, f => long.Parse(f.Random.ReplaceNumbers("###########")))
             .RuleFor(k => k.PoczatekPracy, f => f.Date.Past(1));
 
-        var krupierzy = fakerKrupierzy.Generate(n);
+        var krupierzy = new ConcurrentBag<Krupierzy>();
+
+        Parallel.For(0, n, _ => {
+            krupierzy.Add(fakerKrupierzy.Generate());
+        });
+
         await _context.Krupierzy.AddRangeAsync(krupierzy);
         await SaveChanges();
         Console.WriteLine($"Added {krupierzy.Count} Krupierzy entries.");
-        Console.WriteLine($"Actual count: {_context.Krupierzy.Count()}");
     }
 
     public async Task SeedTypGry() {
@@ -318,7 +207,6 @@ public class DataGeneratorService {
         await _context.TypTransakcji.AddRangeAsync(typyTransakcji);
         await SaveChanges();
         Console.WriteLine($"Added {typyTransakcji.Count} TypTransakcji entries.");
-        Console.WriteLine($"Actual count: {_context.TypTransakcji.Count()}");
     }
 
     public async Task SaveChanges() {
