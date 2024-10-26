@@ -1,13 +1,18 @@
 ﻿using MyConsoleApp.Data;
 using System.Diagnostics;
 
-var DbContext = new ApplicationDbContext();
+Process currentProcess = Process.GetCurrentProcess();
+currentProcess.PriorityClass = ProcessPriorityClass.High;
+
+var conn = "data source=laptopkacper;initial catalog=Kasyno_prod;Integrated Security=True;TrustServerCertificate=True;";
+
+var DbContext = new ApplicationDbContext(conn);
 
 Console.WriteLine("Seeding database...");
 
 var stopwatch = Stopwatch.StartNew();
 
-var seedService = new DataGeneratorService("data source=laptopkacper;initial catalog=Kasyno_prod;Integrated Security=True;TrustServerCertificate=True;");
+var seedService = new DataGeneratorService(conn);
 await seedService.Seed();
 
 stopwatch.Stop();
