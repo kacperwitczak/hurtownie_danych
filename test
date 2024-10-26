@@ -236,14 +236,13 @@ public class DataGeneratorService
             krupierzy = await context.Krupierzy.AsNoTracking().ToListAsync();
         }
 
-        var batchSize = 1000;
+        var batchSize = 500;
         var batches = ustawieniaStolu
             .Select((item, index) => new { item, index })
             .GroupBy(x => x.index / batchSize)
             .Select(g => g.Select(x => x.item).ToList())
             .ToList();
 
-        var totalRozgrywkiCount = 0;
         var totalBatches = batches.Count;
 
         var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
@@ -285,8 +284,6 @@ public class DataGeneratorService
                     context.BulkInsert(rozgrywkiBatch);
                 }
 
-                Interlocked.Add(ref totalRozgrywkiCount, rozgrywkiBatch.Count);
-
                 Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
             }
             catch (Exception ex)
@@ -295,7 +292,11 @@ public class DataGeneratorService
             }
         });
 
-        Console.WriteLine($"Added {totalRozgrywkiCount} Rozgrywki entries.");
+        using (var context = new ApplicationDbContext(_connectionString))
+        {
+            var rozgrywkiCount = await context.Rozgrywki.CountAsync();
+            Console.WriteLine($"Added {rozgrywkiCount} Rozgrywki entries.");
+        }
     }
 
     public async Task SeedTransakcje()
@@ -311,14 +312,13 @@ public class DataGeneratorService
             rozgrywki = await context.Rozgrywki.AsNoTracking().ToListAsync();
         }
 
-        var batchSize = 1000;
+        var batchSize = 10000;
         var batches = rozgrywki
             .Select((item, index) => new { item, index })
             .GroupBy(x => x.index / batchSize)
             .Select(g => g.Select(x => x.item).ToList())
             .ToList();
 
-        var totalTransakcjeCount = 0;
         var totalBatches = batches.Count;
 
         var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
@@ -350,8 +350,6 @@ public class DataGeneratorService
                     context.BulkInsert(transakcjeBatch);
                 }
 
-                Interlocked.Add(ref totalTransakcjeCount, transakcjeBatch.Count);
-
                 Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Transakcje.");
             }
             catch (Exception ex)
@@ -360,7 +358,11 @@ public class DataGeneratorService
             }
         });
 
-        Console.WriteLine($"Added {totalTransakcjeCount} Transakcje entries.");
+        using (var context = new ApplicationDbContext(_connectionString))
+        {
+            var transakcjeCount = await context.Transakcje.CountAsync();
+            Console.WriteLine($"Added {transakcjeCount} Transakcje entries.");
+        }
     }
 
     public static List<(DateTime FirstDay, DateTime LastDay)> GetFirstAndLastDaysOfMonths(int year)
