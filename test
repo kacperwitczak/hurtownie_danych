@@ -5,6 +5,7 @@ using MyConsoleApp.Models;
 using EFCore.BulkExtensions;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using System.Threading;
 
 public class DataGeneratorService
 {
@@ -243,6 +244,8 @@ public class DataGeneratorService
         }
 
         var rozgrywki = new ConcurrentBag<Rozgrywki>();
+        int total = ustawieniaStolu.Count;
+        int processed = 0;
 
         Parallel.ForEach(ustawieniaStolu, () => new Random(), (ustawienie, state, localRandom) =>
         {
@@ -274,6 +277,12 @@ public class DataGeneratorService
                 rozgrywki.Add(rozgrywka);
             }
 
+            int currentProcessed = Interlocked.Increment(ref processed);
+            if (currentProcessed % 100 == 0 || currentProcessed == total)
+            {
+                Console.WriteLine($"Processed {currentProcessed} of {total} ustawieniaStolu ({(currentProcessed * 100 / total)}%)");
+            }
+
             return localRandom;
         },
         _ => { });
@@ -299,6 +308,8 @@ public class DataGeneratorService
         }
 
         var transakcje = new ConcurrentBag<Transakcje>();
+        int total = rozgrywki.Count;
+        int processed = 0;
 
         Parallel.ForEach(rozgrywki, () => new Random(), (rozgrywka, state, localRandom) =>
         {
@@ -319,6 +330,12 @@ public class DataGeneratorService
             foreach (var transakcja in localTransakcje)
             {
                 transakcje.Add(transakcja);
+            }
+
+            int currentProcessed = Interlocked.Increment(ref processed);
+            if (currentProcessed % 1000 == 0 || currentProcessed == total)
+            {
+                Console.WriteLine($"Processed {currentProcessed} of {total} rozgrywki ({(currentProcessed * 100 / total)}%)");
             }
 
             return localRandom;
