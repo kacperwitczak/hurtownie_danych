@@ -8,6 +8,6 @@ build_property.PlatformNeutralAssembly =
 build_property.EnforceExtendedAnalyzerRules = 
 build_property._SupportedPlatformList = Linux,macOS,Windows
 build_property.RootNamespace = database_seeder
-build_property.ProjectDir = D:\hurtownie danych\data_generator\hurtownie_danych\data_generator\database_seeder\
+build_property.ProjectDir = d:\hurtownie danych\data_generator\hurtownie_danych\data_generator\database_seeder\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 

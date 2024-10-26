@@ -6,7 +6,7 @@ using System.Collections.Concurrent;
 
 public class DataGeneratorService {
     private readonly ApplicationDbContext _context;
-    private readonly int n = 50;
+    private readonly int n = 4;
 
     public DataGeneratorService(ApplicationDbContext context) {
         _context = context;
@@ -70,49 +70,83 @@ public class DataGeneratorService {
         await SaveChanges();
         Console.WriteLine($"Added {transakcje.Count} Transakcje entries.");
     }
-
-    public async Task SeedRozgrywki(int n) {
+    public async Task SeedRozgrywki(int n)
+    {
         Console.WriteLine("Seeding Rozgrywki...");
         var ustawieniaStolu = await _context.UstawienieStolu.ToListAsync();
         var krupierzy = await _context.Krupierzy.ToListAsync();
 
-        var fakerRozgrywki = new Faker<Rozgrywki>()
-            .RuleFor(r => r.UstawienieStolu, f => f.PickRandom(ustawieniaStolu))
-            .RuleFor(r => r.Krupier, f => f.PickRandom(krupierzy))
-            .RuleFor(r => r.DataStart, f => f.Date.Past(2))
-            .RuleFor(r => r.DataKoniec, (f, r) => f.Date.Between(r.DataStart, DateTime.Now));
-
         var rozgrywki = new ConcurrentBag<Rozgrywki>();
+        var tasks = new List<Task>();
 
-        Parallel.For(0, n * n * n * n, _ => {
-            rozgrywki.Add(fakerRozgrywki.Generate());
-        });
+        foreach (var ustawienie in ustawieniaStolu)
+        {
+            tasks.Add(Task.Run(() =>
+            {
+                var fakerRozgrywki = new Faker<Rozgrywki>()
+                    .RuleFor(r => r.UstawienieStolu, f => ustawienie)
+                    .RuleFor(r => r.Krupier, f => f.PickRandom(krupierzy));
+
+                var startDate = ustawienie.DataStart;
+                var endDate = ustawienie.DataKoniec.Value;
+
+                // Przetwarzamy każdy dzień w zakresie DataStart - DataKoniec
+                for (var day = startDate; day <= endDate; day = day.AddDays(1))
+                {
+                    for (int i = 0; i < 10; i++)
+                    {
+                        var rozgrywkaStart = day.AddHours(8 + i);
+                        var rozgrywkaEnd = rozgrywkaStart.AddMinutes(new Random().Next(1,60));
+
+                        var rozgrywka = fakerRozgrywki
+                            .RuleFor(r => r.DataStart, f => rozgrywkaStart)
+                            .RuleFor(r => r.DataKoniec, f => rozgrywkaEnd)
+                            .Generate();
+
+                        rozgrywki.Add(rozgrywka);
+                    }
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks);
 
         await _context.Rozgrywki.AddRangeAsync(rozgrywki);
-        await SaveChanges();
+        await _context.SaveChangesAsync();
         Console.WriteLine($"Added {rozgrywki.Count} Rozgrywki entries.");
     }
 
     public async Task SeedUstawienieStolu(int n) {
         Console.WriteLine("Seeding UstawienieStolu...");
-        var stolyQueue = new ConcurrentQueue<Stoly>(await _context.Stoly.ToListAsync());
-        var lokalizacjeQueue = new ConcurrentQueue<Lokalizacje>(await _context.Lokalizacje.ToListAsync());
+        var stolyQueue = new ConcurrentBag<Stoly>(await _context.Stoly.ToListAsync());
+        var lokalizacjeQueue = new ConcurrentBag<Lokalizacje>(await _context.Lokalizacje.ToListAsync());
         var ustawienia = new ConcurrentBag<UstawienieStolu>();
 
-        var fakerUstawienieStolu = new Faker<UstawienieStolu>()
-            .RuleFor(u => u.DataStart, f => f.Date.Past(2))
-            .RuleFor(u => u.DataKoniec, f => f.Date.Past(1));
+        var months2024 = GetFirstAndLastDaysOfMonths(2024);
 
-        Parallel.For(0, n * n * n, _ => {
-            var ustawienieStolu = fakerUstawienieStolu.Generate();
-            if (stolyQueue.TryDequeue(out var stol)) {
-                ustawienieStolu.Stoly = stol;
-            }
-            if (lokalizacjeQueue.TryDequeue(out var lokalizacja)) {
-                ustawienieStolu.Lokalizacje = lokalizacja;
-            }
-            ustawienia.Add(ustawienieStolu);
-        });
+        var tasks = new List<Task>();
+
+        foreach (var month in months2024)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                var offset = month.LastDay.Month;
+                for (int i = 0; i < n * n * n; i++)
+                {
+                    var ustawienieStolu = new UstawienieStolu
+                    {
+                        DataStart = month.FirstDay,
+                        DataKoniec = month.LastDay,
+                        Stoly = stolyQueue.ElementAt(i * offset % stolyQueue.Count),
+                        Lokalizacje = lokalizacjeQueue.ElementAt(i * offset % lokalizacjeQueue.Count)
+                    };
+
+                    ustawienia.Add(ustawienieStolu);
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks);
 
         await _context.UstawienieStolu.AddRangeAsync(ustawienia);
         await SaveChanges();
@@ -170,7 +204,7 @@ public class DataGeneratorService {
 
         var krupierzy = new ConcurrentBag<Krupierzy>();
 
-        Parallel.For(0, n, _ => {
+        Parallel.For(0, n*n, _ => {
             krupierzy.Add(fakerKrupierzy.Generate());
         });
 
@@ -211,5 +245,20 @@ public class DataGeneratorService {
 
     public async Task SaveChanges() {
         await _context.SaveChangesAsync();
+    }
+
+    public static List<(DateTime FirstDay, DateTime LastDay)> GetFirstAndLastDaysOfMonths(int year)
+    {
+        var monthDays = new List<(DateTime FirstDay, DateTime LastDay)>();
+
+        for (int month = 1; month <= 12; month++)
+        {
+            DateTime firstDay = new DateTime(year, month, 1);
+            DateTime lastDay = new DateTime(year, month, DateTime.DaysInMonth(year, month));
+            
+            monthDays.Add((firstDay, lastDay));
+        }
+
+        return monthDays;
     }
 }

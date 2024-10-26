@@ -1,6 +1,9 @@
 import pyodbc
 from faker import Faker
 import random
+import time
+
+start_time = time.time()
 
 # Initialize data generator
 fake = Faker('pl_PL')
@@ -171,3 +174,7 @@ generate_data()
 conn.commit()
 cursor.close()
 conn.close()
+
+end_time = time.time()
+execution_time = end_time - start_time  # Oblicza czas wykonania
+print(f"Czas wykonania: {execution_time:.6f} sekund")
