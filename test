@@ -1,13 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
-using System.Threading.Tasks;
-using System.Threading;
 using Bogus;
 using Microsoft.EntityFrameworkCore;
 using MyConsoleApp.Data;
 using MyConsoleApp.Models;
 using EFCore.BulkExtensions;
+using System.Collections.Concurrent;
 
 public class DataGeneratorService
 {
@@ -24,28 +20,28 @@ public class DataGeneratorService
         Console.WriteLine("Seeding database...");
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            try
-            {
-                Console.WriteLine("Clearing database...");
-                await context.Database.EnsureDeletedAsync();
-                Console.WriteLine("Database cleared.");
-                Console.WriteLine("Creating db...");
-                await context.Database.EnsureCreatedAsync();
-                Console.WriteLine("Db created.");
-                await SeedTypGry();
-                await SeedTypTransakcji();
-                await SeedKrupierzy(n);
-                await SeedLokalizacje(n);
-                await SeedStoly(n);
-                await SeedUstawienieStolu(n);
-                await SeedRozgrywki();
-                await SeedTransakcje();
-                Console.WriteLine("Data seeded successfully.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error seeding data: {ex.Message}");
-            }
+                try
+                {
+                    Console.WriteLine("Clearing database...");
+                    await context.Database.EnsureDeletedAsync();
+                    Console.WriteLine("Database cleared.");
+                    Console.WriteLine("Creating db...");
+                    await context.Database.EnsureCreatedAsync();
+                    Console.WriteLine("Db created.");
+                    await SeedTypGry();
+                    await SeedTypTransakcji();
+                    await SeedKrupierzy(n);
+                    await SeedLokalizacje(n);
+                    await SeedStoly(n);
+                    await SeedUstawienieStolu(n);
+                    await SeedRozgrywki();
+                    await SeedTransakcje();
+                    Console.WriteLine("Data seeded successfully.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error seeding data: {ex.Message}");
+                }
         }
     }
 
@@ -77,7 +73,7 @@ public class DataGeneratorService
             new TypGry { NazwaGry = "Bakarat" },
             new TypGry { NazwaGry = "Keno" },
             new TypGry { NazwaGry = "Kostka" },
-            new TypGry { NazwaGry = "Kości" },
+            new TypGry { NazwaGry = "Kosci" },
             new TypGry { NazwaGry = "Bingo" }
         };
 
@@ -93,8 +89,8 @@ public class DataGeneratorService
         Console.WriteLine("Seeding TypTransakcji...");
         var typyTransakcji = new List<TypTransakcji>
         {
-            new TypTransakcji { Typ = "Wpłata" },
-            new TypTransakcji { Typ = "Wypłata" }
+            new TypTransakcji { Typ = "Wplata" },
+            new TypTransakcji { Typ = "Wyplata" }
         };
 
         using (var context = new ApplicationDbContext(_connectionString))
@@ -157,7 +153,7 @@ public class DataGeneratorService
 
     public async Task SeedStoly(int n)
     {
-        Console.WriteLine("Seeding Stoły...");
+        Console.WriteLine("Seeding Stoly...");
         List<TypGry> typyGier;
 
         using (var context = new ApplicationDbContext(_connectionString))
@@ -166,8 +162,8 @@ public class DataGeneratorService
         }
 
         var fakerStoly = new Faker<Stoly>()
-            .RuleFor(s => s.MaksymalnaStawka, f => f.Random.Number(100, 1000))
-            .RuleFor(s => s.MinimalnaStawka, f => f.Random.Number(1, 99))
+            .RuleFor(s => s.MaksymalnaStawka, f => f.Random.Number(1, 100))
+            .RuleFor(s => s.MinimalnaStawka, f => f.Random.Number(100, 1000))
             .RuleFor(s => s.LiczbaMiejsc, f => (short)f.Random.Number(1, 10))
             .RuleFor(s => s.TypGry, f => f.PickRandom(typyGier));
 
@@ -182,7 +178,7 @@ public class DataGeneratorService
         {
             await context.BulkInsertAsync(stoly);
         }
-        Console.WriteLine($"Added {stoly.Count} Stoły entries.");
+        Console.WriteLine($"Added {stoly.Count} Stoly entries.");
     }
 
     public async Task SeedUstawienieStolu(int n)
@@ -245,67 +241,45 @@ public class DataGeneratorService
             krupierzy = await context.Krupierzy.ToListAsync();
         }
 
-        int total = ustawieniaStolu.Count;
-        int processed = 0;
-        int maxDegreeOfParallelism = Environment.ProcessorCount;
-        var semaphore = new SemaphoreSlim(maxDegreeOfParallelism);
+        var rozgrywki = new ConcurrentBag<Rozgrywki>();
+        var random = new Random();
 
-        var tasks = new List<Task>();
-
-        foreach (var ustawienie in ustawieniaStolu)
+        Parallel.ForEach(ustawieniaStolu, ustawienie =>
         {
-            await semaphore.WaitAsync();
+            var localRozgrywki = new List<Rozgrywki>();
+            var startDate = ustawienie.DataStart;
+            var endDate = ustawienie.DataKoniec.Value;
 
-            tasks.Add(Task.Run(async () =>
+            for (var day = startDate; day <= endDate; day = day.AddDays(1))
             {
-                try
+                for (int i = 0; i < 10; i++)
                 {
-                    var localRozgrywki = new List<Rozgrywki>();
-                    var localRandom = new Random();
+                    var rozgrywkaStart = day.AddHours(8 + i);
+                    var rozgrywkaEnd = rozgrywkaStart.AddMinutes(random.Next(1, 60));
 
-                    var startDate = ustawienie.DataStart;
-                    var endDate = ustawienie.DataKoniec.Value;
-
-                    for (var day = startDate; day <= endDate; day = day.AddDays(1))
+                    var rozgrywka = new Rozgrywki
                     {
-                        for (int i = 0; i < 10; i++)
-                        {
-                            var rozgrywkaStart = day.AddHours(8 + i);
-                            var rozgrywkaEnd = rozgrywkaStart.AddMinutes(localRandom.Next(1, 60));
+                        DataStart = rozgrywkaStart,
+                        DataKoniec = rozgrywkaEnd,
+                        UstawienieStolu = ustawienie,
+                        Krupier = krupierzy[random.Next(krupierzy.Count)]
+                    };
 
-                            var rozgrywka = new Rozgrywki
-                            {
-                                DataStart = rozgrywkaStart,
-                                DataKoniec = rozgrywkaEnd,
-                                UstawienieStolu = ustawienie,
-                                Krupier = krupierzy[localRandom.Next(krupierzy.Count)]
-                            };
-
-                            localRozgrywki.Add(rozgrywka);
-                        }
-                    }
-
-                    using (var localContext = new ApplicationDbContext(_connectionString))
-                    {
-                        await localContext.BulkInsertAsync(localRozgrywki);
-                    }
-
-                    int currentProcessed = Interlocked.Increment(ref processed);
-                    if (currentProcessed % 100 == 0 || currentProcessed == total)
-                    {
-                        Console.WriteLine($"Processed {currentProcessed} of {total} ustawieniaStolu ({(currentProcessed * 100 / total)}%)");
-                    }
+                    localRozgrywki.Add(rozgrywka);
                 }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }));
+            }
+
+            foreach (var rozgrywka in localRozgrywki)
+            {
+                rozgrywki.Add(rozgrywka);
+            }
+        });
+
+        using (var context = new ApplicationDbContext(_connectionString))
+        {
+            await context.BulkInsertAsync(rozgrywki.ToList());
         }
-
-        await Task.WhenAll(tasks);
-
-        Console.WriteLine("Seeding Rozgrywki completed.");
+        Console.WriteLine($"Added {rozgrywki.Count} Rozgrywki entries.");
     }
 
     public async Task SeedTransakcje()
@@ -321,57 +295,36 @@ public class DataGeneratorService
             rozgrywki = await context.Rozgrywki.ToListAsync();
         }
 
-        int total = rozgrywki.Count;
-        int processed = 0;
-        int maxDegreeOfParallelism = Environment.ProcessorCount;
-        var semaphore = new SemaphoreSlim(maxDegreeOfParallelism);
+        var transakcje = new ConcurrentBag<Transakcje>();
+        var random = new Random();
 
-        var tasks = new List<Task>();
-
-        foreach (var rozgrywka in rozgrywki)
+        Parallel.ForEach(rozgrywki, rozgrywka =>
         {
-            await semaphore.WaitAsync();
+            var localTransakcje = new List<Transakcje>();
 
-            tasks.Add(Task.Run(async () =>
+            for (int i = 0; i < 10; i++)
             {
-                try
+                var transakcja = new Transakcje
                 {
-                    var localTransakcje = new List<Transakcje>();
-                    var localRandom = new Random();
+                    TypTransakcji = typyTransakcji[random.Next(typyTransakcji.Count)],
+                    Rozgrywki = rozgrywka,
+                    Kwota = (decimal)(random.NextDouble() * 999 + 1)
+                };
 
-                    for (int i = 0; i < 10; i++)
-                    {
-                        var transakcja = new Transakcje
-                        {
-                            TypTransakcji = typyTransakcji[localRandom.Next(typyTransakcji.Count)],
-                            Rozgrywki = rozgrywka,
-                            Kwota = (decimal)(localRandom.NextDouble() * 999 + 1)
-                        };
+                localTransakcje.Add(transakcja);
+            }
 
-                        localTransakcje.Add(transakcja);
-                    }
+            foreach (var transakcja in localTransakcje)
+            {
+                transakcje.Add(transakcja);
+            }
+        });
 
-                    using (var localContext = new ApplicationDbContext(_connectionString))
-                    {
-                        await localContext.BulkInsertAsync(localTransakcje);
-                    }
-
-                    int currentProcessed = Interlocked.Increment(ref processed);
-                    if (currentProcessed % 1000 == 0 || currentProcessed == total)
-                    {
-                        Console.WriteLine($"Processed {currentProcessed} of {total} rozgrywki ({(currentProcessed * 100 / total)}%)");
-                    }
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }));
+        using (var context = new ApplicationDbContext(_connectionString))
+        {
+            await context.BulkInsertAsync(transakcje.ToList());
         }
-
-        await Task.WhenAll(tasks);
-
-        Console.WriteLine("Seeding Transakcje completed.");
+        Console.WriteLine($"Added {transakcje.Count} Transakcje entries.");
     }
 
     public static List<(DateTime FirstDay, DateTime LastDay)> GetFirstAndLastDaysOfMonths(int year)
