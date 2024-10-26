@@ -3,11 +3,12 @@ using Microsoft.EntityFrameworkCore;
 using MyConsoleApp.Data;
 using MyConsoleApp.Models;
 using EFCore.BulkExtensions;
+using System.Collections.Concurrent;
 
 public class DataGeneratorService
 {
     private readonly string _connectionString;
-    private readonly int n = 4;
+    private readonly int n = 10;
 
     public DataGeneratorService(string connectionString)
     {
@@ -19,11 +20,14 @@ public class DataGeneratorService
         Console.WriteLine("Seeding database...");
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            if (context.Database.EnsureCreated())
-            {
                 try
                 {
-                    await ClearDatabase();
+                    Console.WriteLine("Clearing database...");
+                    await context.Database.EnsureDeletedAsync();
+                    Console.WriteLine("Database cleared.");
+                    Console.WriteLine("Creating db...");
+                    await context.Database.EnsureCreatedAsync();
+                    Console.WriteLine("Db created.");
                     await SeedTypGry();
                     await SeedTypTransakcji();
                     await SeedKrupierzy(n);
@@ -38,7 +42,6 @@ public class DataGeneratorService
                 {
                     Console.WriteLine($"Error seeding data: {ex.Message}");
                 }
-            }
         }
     }
 
@@ -108,7 +111,7 @@ public class DataGeneratorService
 
         var krupierzy = new List<Krupierzy>();
 
-        for (int i = 0; i < n * n; i++)
+        for (int i = 0; i < n * n * n; i++)
         {
             krupierzy.Add(fakerKrupierzy.Generate());
         }
@@ -162,7 +165,7 @@ public class DataGeneratorService
             .RuleFor(s => s.MaksymalnaStawka, f => f.Random.Number(1, 100))
             .RuleFor(s => s.MinimalnaStawka, f => f.Random.Number(100, 1000))
             .RuleFor(s => s.LiczbaMiejsc, f => (short)f.Random.Number(1, 10))
-            .RuleFor(s => s.TypGryId, f => f.PickRandom(typyGier).TypGryId);
+            .RuleFor(s => s.TypGry, f => f.PickRandom(typyGier));
 
         var stoly = new List<Stoly>();
 
@@ -205,8 +208,8 @@ public class DataGeneratorService
                 {
                     DataStart = month.FirstDay,
                     DataKoniec = month.LastDay,
-                    StolyId = stolyList[(i * offset) % stolyList.Count].StolyId,
-                    LokalizacjeId = lokalizacjeList[(i * offset) % lokalizacjeList.Count].LokalizacjeId
+                    Stoly = stolyList[(i * offset) % stolyList.Count],
+                    Lokalizacje = lokalizacjeList[(i * offset) % lokalizacjeList.Count]
                 };
 
                 localUstawienia.Add(ustawienieStolu);
@@ -258,8 +261,8 @@ public class DataGeneratorService
                     {
                         DataStart = rozgrywkaStart,
                         DataKoniec = rozgrywkaEnd,
-                        UstawienieStoluId = ustawienie.UstawienieStoluId,
-                        KrupierId = krupierzy[random.Next(krupierzy.Count)].KrupierzyId
+                        UstawienieStolu = ustawienie,
+                        Krupier = krupierzy[random.Next(krupierzy.Count)]
                     };
 
                     localRozgrywki.Add(rozgrywka);
@@ -303,8 +306,8 @@ public class DataGeneratorService
             {
                 var transakcja = new Transakcje
                 {
-                    TypTransakcjiId = typyTransakcji[random.Next(typyTransakcji.Count)].TypTransakcjiId,
-                    RozgrywkiId = rozgrywka.RozgrywkiId,
+                    TypTransakcji = typyTransakcji[random.Next(typyTransakcji.Count)],
+                    Rozgrywki = rozgrywka,
                     Kwota = (decimal)(random.NextDouble() * 999 + 1)
                 };
 
