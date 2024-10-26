@@ -4,6 +4,7 @@ using MyConsoleApp.Data;
 using MyConsoleApp.Models;
 using EFCore.BulkExtensions;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 public class DataGeneratorService
 {
@@ -20,28 +21,28 @@ public class DataGeneratorService
         Console.WriteLine("Seeding database...");
         using (var context = new ApplicationDbContext(_connectionString))
         {
-                try
-                {
-                    Console.WriteLine("Clearing database...");
-                    await context.Database.EnsureDeletedAsync();
-                    Console.WriteLine("Database cleared.");
-                    Console.WriteLine("Creating db...");
-                    await context.Database.EnsureCreatedAsync();
-                    Console.WriteLine("Db created.");
-                    await SeedTypGry();
-                    await SeedTypTransakcji();
-                    await SeedKrupierzy(n);
-                    await SeedLokalizacje(n);
-                    await SeedStoly(n);
-                    await SeedUstawienieStolu(n);
-                    await SeedRozgrywki();
-                    await SeedTransakcje();
-                    Console.WriteLine("Data seeded successfully.");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error seeding data: {ex.Message}");
-                }
+            try
+            {
+                Console.WriteLine("Clearing database...");
+                await context.Database.EnsureDeletedAsync();
+                Console.WriteLine("Database cleared.");
+                Console.WriteLine("Creating db...");
+                await context.Database.EnsureCreatedAsync();
+                Console.WriteLine("Db created.");
+                await SeedTypGry();
+                await SeedTypTransakcji();
+                await SeedKrupierzy(n);
+                await SeedLokalizacje(n);
+                await SeedStoly(n);
+                await SeedUstawienieStolu(n);
+                await SeedRozgrywki();
+                await SeedTransakcje();
+                Console.WriteLine("Data seeded successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error seeding data: {ex.Message}");
+            }
         }
     }
 
@@ -242,9 +243,8 @@ public class DataGeneratorService
         }
 
         var rozgrywki = new ConcurrentBag<Rozgrywki>();
-        var random = new Random();
 
-        Parallel.ForEach(ustawieniaStolu, ustawienie =>
+        Parallel.ForEach(ustawieniaStolu, () => new Random(), (ustawienie, state, localRandom) =>
         {
             var localRozgrywki = new List<Rozgrywki>();
             var startDate = ustawienie.DataStart;
@@ -255,14 +255,14 @@ public class DataGeneratorService
                 for (int i = 0; i < 10; i++)
                 {
                     var rozgrywkaStart = day.AddHours(8 + i);
-                    var rozgrywkaEnd = rozgrywkaStart.AddMinutes(random.Next(1, 60));
+                    var rozgrywkaEnd = rozgrywkaStart.AddMinutes(localRandom.Next(1, 60));
 
                     var rozgrywka = new Rozgrywki
                     {
                         DataStart = rozgrywkaStart,
                         DataKoniec = rozgrywkaEnd,
                         UstawienieStolu = ustawienie,
-                        Krupier = krupierzy[random.Next(krupierzy.Count)]
+                        Krupier = krupierzy[localRandom.Next(krupierzy.Count)]
                     };
 
                     localRozgrywki.Add(rozgrywka);
@@ -273,7 +273,10 @@ public class DataGeneratorService
             {
                 rozgrywki.Add(rozgrywka);
             }
-        });
+
+            return localRandom;
+        },
+        _ => { });
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
@@ -296,9 +299,8 @@ public class DataGeneratorService
         }
 
         var transakcje = new ConcurrentBag<Transakcje>();
-        var random = new Random();
 
-        Parallel.ForEach(rozgrywki, rozgrywka =>
+        Parallel.ForEach(rozgrywki, () => new Random(), (rozgrywka, state, localRandom) =>
         {
             var localTransakcje = new List<Transakcje>();
 
@@ -306,9 +308,9 @@ public class DataGeneratorService
             {
                 var transakcja = new Transakcje
                 {
-                    TypTransakcji = typyTransakcji[random.Next(typyTransakcji.Count)],
+                    TypTransakcji = typyTransakcji[localRandom.Next(typyTransakcji.Count)],
                     Rozgrywki = rozgrywka,
-                    Kwota = (decimal)(random.NextDouble() * 999 + 1)
+                    Kwota = (decimal)(localRandom.NextDouble() * 999 + 1)
                 };
 
                 localTransakcje.Add(transakcja);
@@ -318,7 +320,10 @@ public class DataGeneratorService
             {
                 transakcje.Add(transakcja);
             }
-        });
+
+            return localRandom;
+        },
+        _ => { });
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
