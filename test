@@ -232,59 +232,68 @@ public class DataGeneratorService
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            ustawieniaStolu = await context.UstawienieStolu.ToListAsync();
-            krupierzy = await context.Krupierzy.ToListAsync();
+            ustawieniaStolu = await context.UstawienieStolu.AsNoTracking().ToListAsync();
+            krupierzy = await context.Krupierzy.AsNoTracking().ToListAsync();
         }
 
         var batchSize = 1000;
-        var batchCount = (ustawieniaStolu.Count + batchSize - 1) / batchSize;
+        var batches = ustawieniaStolu
+            .Select((item, index) => new { item, index })
+            .GroupBy(x => x.index / batchSize)
+            .Select(g => g.Select(x => x.item).ToList())
+            .ToList();
 
         var totalRozgrywkiCount = 0;
+        var totalBatches = batches.Count;
 
-        for (int batchIndex = 0; batchIndex < batchCount; batchIndex++)
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+        Parallel.ForEach(batches, options, (batchUstawienia, state, batchIndex) =>
         {
-            var batchUstawienia = ustawieniaStolu.Skip(batchIndex * batchSize).Take(batchSize);
-
-            var rozgrywkiBatch = new List<Rozgrywki>();
-
-            var threadLocalRandom = new ThreadLocal<Random>(() => new Random());
-
-            foreach (var ustawienie in batchUstawienia)
+            try
             {
-                var random = threadLocalRandom.Value;
+                var rozgrywkiBatch = new List<Rozgrywki>();
+                var threadLocalRandom = new Random();
 
-                var startDate = ustawienie.DataStart;
-                var endDate = ustawienie.DataKoniec.Value;
-
-                for (var day = startDate; day <= endDate; day = day.AddDays(1))
+                foreach (var ustawienie in batchUstawienia)
                 {
-                    for (int i = 0; i < 10; i++)
+                    var startDate = ustawienie.DataStart;
+                    var endDate = ustawienie.DataKoniec.Value;
+
+                    for (var day = startDate; day <= endDate; day = day.AddDays(1))
                     {
-                        var rozgrywkaStart = day.AddHours(8 + i);
-                        var rozgrywkaEnd = rozgrywkaStart.AddMinutes(random.Next(1, 60));
-
-                        var rozgrywka = new Rozgrywki
+                        for (int i = 0; i < 10; i++)
                         {
-                            DataStart = rozgrywkaStart,
-                            DataKoniec = rozgrywkaEnd,
-                            UstawienieStolu = ustawienie,
-                            Krupier = krupierzy[random.Next(krupierzy.Count)]
-                        };
+                            var rozgrywkaStart = day.AddHours(8 + i);
+                            var rozgrywkaEnd = rozgrywkaStart.AddMinutes(threadLocalRandom.Next(1, 60));
 
-                        rozgrywkiBatch.Add(rozgrywka);
+                            var rozgrywka = new Rozgrywki
+                            {
+                                DataStart = rozgrywkaStart,
+                                DataKoniec = rozgrywkaEnd,
+                                UstawienieStolu = ustawienie,
+                                Krupier = krupierzy[threadLocalRandom.Next(krupierzy.Count)]
+                            };
+
+                            rozgrywkiBatch.Add(rozgrywka);
+                        }
                     }
                 }
-            }
 
-            using (var context = new ApplicationDbContext(_connectionString))
+                using (var context = new ApplicationDbContext(_connectionString))
+                {
+                    context.BulkInsert(rozgrywkiBatch);
+                }
+
+                Interlocked.Add(ref totalRozgrywkiCount, rozgrywkiBatch.Count);
+
+                Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
+            }
+            catch (Exception ex)
             {
-                await context.BulkInsertAsync(rozgrywkiBatch);
+                Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
             }
-
-            totalRozgrywkiCount += rozgrywkiBatch.Count;
-
-            Console.WriteLine($"Inserted batch {batchIndex + 1}/{batchCount} of Rozgrywki.");
-        }
+        });
 
         Console.WriteLine($"Added {totalRozgrywkiCount} Rozgrywki entries.");
     }
@@ -298,49 +307,58 @@ public class DataGeneratorService
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            typyTransakcji = await context.TypTransakcji.ToListAsync();
-            rozgrywki = await context.Rozgrywki.ToListAsync();
+            typyTransakcji = await context.TypTransakcji.AsNoTracking().ToListAsync();
+            rozgrywki = await context.Rozgrywki.AsNoTracking().ToListAsync();
         }
 
         var batchSize = 1000;
-        var batchCount = (rozgrywki.Count + batchSize - 1) / batchSize;
+        var batches = rozgrywki
+            .Select((item, index) => new { item, index })
+            .GroupBy(x => x.index / batchSize)
+            .Select(g => g.Select(x => x.item).ToList())
+            .ToList();
 
         var totalTransakcjeCount = 0;
+        var totalBatches = batches.Count;
 
-        for (int batchIndex = 0; batchIndex < batchCount; batchIndex++)
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+        Parallel.ForEach(batches, options, (batchRozgrywki, state, batchIndex) =>
         {
-            var batchRozgrywki = rozgrywki.Skip(batchIndex * batchSize).Take(batchSize);
-
-            var transakcjeBatch = new List<Transakcje>();
-
-            var threadLocalRandom = new ThreadLocal<Random>(() => new Random());
-
-            foreach (var rozgrywka in batchRozgrywki)
+            try
             {
-                var random = threadLocalRandom.Value;
+                var transakcjeBatch = new List<Transakcje>();
+                var threadLocalRandom = new Random();
 
-                for (int i = 0; i < 10; i++)
+                foreach (var rozgrywka in batchRozgrywki)
                 {
-                    var transakcja = new Transakcje
+                    for (int i = 0; i < 10; i++)
                     {
-                        TypTransakcji = typyTransakcji[random.Next(typyTransakcji.Count)],
-                        Rozgrywki = rozgrywka,
-                        Kwota = (decimal)(random.NextDouble() * 999 + 1)
-                    };
+                        var transakcja = new Transakcje
+                        {
+                            TypTransakcji = typyTransakcji[threadLocalRandom.Next(typyTransakcji.Count)],
+                            Rozgrywki = rozgrywka,
+                            Kwota = (decimal)(threadLocalRandom.NextDouble() * 999 + 1)
+                        };
 
-                    transakcjeBatch.Add(transakcja);
+                        transakcjeBatch.Add(transakcja);
+                    }
                 }
-            }
 
-            using (var context = new ApplicationDbContext(_connectionString))
+                using (var context = new ApplicationDbContext(_connectionString))
+                {
+                    context.BulkInsert(transakcjeBatch);
+                }
+
+                Interlocked.Add(ref totalTransakcjeCount, transakcjeBatch.Count);
+
+                Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Transakcje.");
+            }
+            catch (Exception ex)
             {
-                await context.BulkInsertAsync(transakcjeBatch);
+                Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
             }
-
-            totalTransakcjeCount += transakcjeBatch.Count;
-
-            Console.WriteLine($"Inserted batch {batchIndex + 1}/{batchCount} of Transakcje.");
-        }
+        });
 
         Console.WriteLine($"Added {totalTransakcjeCount} Transakcje entries.");
     }
