@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("database_seeder")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+112cd67f7064fa21119b009fa1a0c6b736fcdda7")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+67b835735a18c2136b615e2cd0eff54f580e526a")]
 [assembly: System.Reflection.AssemblyProductAttribute("database_seeder")]
 [assembly: System.Reflection.AssemblyTitleAttribute("database_seeder")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

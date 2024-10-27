@@ -5,11 +5,15 @@ using MyConsoleApp.Models;
 using EFCore.BulkExtensions;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 public class DataGeneratorService
 {
     private readonly string _connectionString;
-    private readonly int n = 3;
+    private readonly int n = 10;
 
     public DataGeneratorService(string connectionString)
     {
@@ -34,17 +38,9 @@ public class DataGeneratorService
                 await SeedKrupierzy(n);
                 await SeedLokalizacje(n);
                 await SeedStoly(n);
-
-                int firstYear = 2023;
-                await SeedUstawienieStolu(n,2023);
-                await SeedRozgrywki(2023);
-                await SeedTransakcje(2023);
-
-                int secondYear = 2024;
-                await SeedUstawienieStolu(n,2024);
-                await SeedRozgrywki(2024);
-                await SeedTransakcje(2024);
-
+                await SeedUstawienieStolu(n);
+                await SeedRozgrywki();
+                await SeedTransakcje();
                 Console.WriteLine("Data seeded successfully.");
             }
             catch (Exception ex)
@@ -120,7 +116,10 @@ public class DataGeneratorService
 
         var krupierzy = new List<Krupierzy>();
 
-        krupierzy.AddRange(fakerKrupierzy.Generate(n*n*n));
+        for (int i = 0; i < n * n * n; i++)
+        {
+            krupierzy.Add(fakerKrupierzy.Generate());
+        }
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
@@ -175,7 +174,10 @@ public class DataGeneratorService
 
         var stoly = new List<Stoly>();
 
-        stoly.AddRange(fakerStoly.Generate(n*n*n));
+        for (int i = 0; i < n * n * n; i++)
+        {
+            stoly.Add(fakerStoly.Generate());
+        }
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
@@ -184,7 +186,7 @@ public class DataGeneratorService
         Console.WriteLine($"Added {stoly.Count} Stoly entries.");
     }
 
-    public async Task SeedUstawienieStolu(int n, int year)
+    public async Task SeedUstawienieStolu(int n)
     {
         Console.WriteLine("Seeding UstawienieStolu...");
 
@@ -198,11 +200,11 @@ public class DataGeneratorService
         }
 
         var ustawienia = new List<UstawienieStolu>();
-        var months2024 = GetFirstAndLastDaysOfMonths(year);
+        var months2024 = GetFirstAndLastDaysOfMonths(2024);
 
         foreach (var month in months2024)
         {
-            var offset = month.LastDay.Month - 1;
+            var offset = month.LastDay.Month;
 
             for (int i = 0; i < n * n * n; i++)
             {
@@ -210,8 +212,8 @@ public class DataGeneratorService
                 {
                     DataStart = month.FirstDay,
                     DataKoniec = month.LastDay,
-                    Stoly = stolyList[(i + offset) % stolyList.Count],
-                    Lokalizacje = lokalizacjeList[(i + offset) % lokalizacjeList.Count]
+                    Stoly = stolyList[(i * offset) % stolyList.Count],
+                    Lokalizacje = lokalizacjeList[(i * offset) % lokalizacjeList.Count]
                 };
 
                 ustawienia.Add(ustawienieStolu);
@@ -221,11 +223,11 @@ public class DataGeneratorService
         using (var context = new ApplicationDbContext(_connectionString))
         {
             await context.BulkInsertAsync(ustawienia);
-            Console.WriteLine($"Currently in db: {await context.UstawienieStolu.CountAsync() } UstawienieStolu entries.");
         }
+        Console.WriteLine($"Added {ustawienia.Count} UstawienieStolu entries.");
     }
 
-    public async Task SeedRozgrywki(int year)
+    public async Task SeedRozgrywki()
     {
         Console.WriteLine("Seeding Rozgrywki...");
 
@@ -234,10 +236,7 @@ public class DataGeneratorService
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            ustawieniaStolu = await context.UstawienieStolu
-                .AsNoTracking()
-                .Where(x => x.DataStart.Year >= year && x.DataKoniec.Value.Year <= year)
-                .ToListAsync();
+            ustawieniaStolu = await context.UstawienieStolu.AsNoTracking().ToListAsync();
             krupierzy = await context.Krupierzy.AsNoTracking().ToListAsync();
         }
 
@@ -248,88 +247,81 @@ public class DataGeneratorService
             .Select(g => g.Select(x => x.item).ToList())
             .ToList();
 
+        var tasks = new List<Task>();
         var totalBatches = batches.Count;
 
-        // ConcurrentBag to hold all lists of rozgrywki batches
-        var rozgrywkiBag = new ConcurrentBag<List<Rozgrywki>>();
-
-        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-
-        Parallel.ForEach(batches, options, (batchUstawienia, state, batchIndex) =>
+        for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++)
         {
-            try
+            var batchUstawienia = batches[batchIndex];
+
+            tasks.Add(Task.Run(async () =>
             {
-                var rozgrywkiBatch = new List<Rozgrywki>();
-                var threadLocalRandom = new Random();
-
-                foreach (var ustawienie in batchUstawienia)
+                try
                 {
-                    var startDate = ustawienie.DataStart;
-                    var endDate = ustawienie.DataKoniec.Value;
+                    var rozgrywkiBatch = new List<Rozgrywki>();
+                    var threadLocalRandom = new Random();
 
-                    for (var day = startDate; day <= endDate; day = day.AddDays(1))
+                    foreach (var ustawienie in batchUstawienia)
                     {
-                        for (int i = 0; i < 10; i++)
+                        var startDate = ustawienie.DataStart;
+                        var endDate = ustawienie.DataKoniec.Value;
+
+                        for (var day = startDate; day <= endDate; day = day.AddDays(1))
                         {
-                            var rozgrywkaStart = day.AddHours(8 + i);
-                            var rozgrywkaEnd = rozgrywkaStart.AddMinutes(threadLocalRandom.Next(1, 60));
-
-                            var rozgrywka = new Rozgrywki
+                            for (int i = 0; i < 10; i++)
                             {
-                                DataStart = rozgrywkaStart,
-                                DataKoniec = rozgrywkaEnd,
-                                UstawienieStolu = ustawienie,
-                                Krupier = krupierzy[threadLocalRandom.Next(krupierzy.Count)]
-                            };
+                                var rozgrywkaStart = day.AddHours(8 + i);
+                                var rozgrywkaEnd = rozgrywkaStart.AddMinutes(threadLocalRandom.Next(1, 60));
 
-                            rozgrywkiBatch.Add(rozgrywka);
+                                var rozgrywka = new Rozgrywki
+                                {
+                                    DataStart = rozgrywkaStart,
+                                    DataKoniec = rozgrywkaEnd,
+                                    UstawienieStolu = ustawienie,
+                                    Krupier = krupierzy[threadLocalRandom.Next(krupierzy.Count)]
+                                };
+
+                                rozgrywkiBatch.Add(rozgrywka);
+                            }
                         }
                     }
+
+                    using (var context = new ApplicationDbContext(_connectionString))
+                    {
+                        await context.BulkInsertAsync(rozgrywkiBatch);
+                    }
+
+                    Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
+                }
+            }));
+        }
 
-                // Add the batch list to the ConcurrentBag
-                rozgrywkiBag.Add(rozgrywkiBatch);
-                Console.WriteLine($"Processed batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
-            }
-        });
+        await Task.WhenAll(tasks);
 
-        // Inserting all batches from ConcurrentBag
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            for (int batchIndex = 0; batchIndex < rozgrywkiBag.Count; batchIndex++)
-            {
-                var rozgrywkiBatch = rozgrywkiBag.ElementAt(batchIndex);
-                await context.BulkInsertAsync(rozgrywkiBatch);
-                Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
-            }
-
             var rozgrywkiCount = await context.Rozgrywki.CountAsync();
-            Console.WriteLine($"Currently in db: {rozgrywkiCount} Rozgrywki entries.");
+            Console.WriteLine($"Added {rozgrywkiCount} Rozgrywki entries.");
         }
     }
 
-    public async Task SeedTransakcje(int year)
+    public async Task SeedTransakcje()
     {
         Console.WriteLine("Seeding Transakcje...");
 
         List<TypTransakcji> typyTransakcji;
         List<Rozgrywki> rozgrywki;
 
-        // Fetch TypTransakcji and Rozgrywki from the database
         using (var context = new ApplicationDbContext(_connectionString))
         {
             typyTransakcji = await context.TypTransakcji.AsNoTracking().ToListAsync();
-            rozgrywki = await context.Rozgrywki
-                .AsNoTracking()
-                .Where(x => x.DataStart.Year >= year && x.DataKoniec.Year <= year)
-                .ToListAsync();
+            rozgrywki = await context.Rozgrywki.AsNoTracking().ToListAsync();
         }
 
-        // Define batch size and split rozgrywki into batches
         var batchSize = 10000;
         var batches = rozgrywki
             .Select((item, index) => new { item, index })
@@ -337,57 +329,55 @@ public class DataGeneratorService
             .Select(g => g.Select(x => x.item).ToList())
             .ToList();
 
+        var tasks = new List<Task>();
         var totalBatches = batches.Count;
 
-        // ConcurrentBag to hold all lists of transakcje batches
-        var transakcjeBag = new ConcurrentBag<List<Transakcje>>();
-
-        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-
-        // Parallel processing of each batch
-        Parallel.ForEach(batches, options, (batchRozgrywki, state, batchIndex) =>
+        for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++)
         {
-            try
-            {
-                var transakcjeBatch = new List<Transakcje>();
-                var threadLocalRandom = new Random();
+            var batchRozgrywki = batches[batchIndex];
 
-                foreach (var rozgrywka in batchRozgrywki)
+            tasks.Add(Task.Run(async () =>
+            {
+                try
                 {
-                    for (int i = 0; i < 10; i++)
+                    var transakcjeBatch = new List<Transakcje>();
+                    var threadLocalRandom = new Random();
+
+                    foreach (var rozgrywka in batchRozgrywki)
                     {
-                        var transakcja = new Transakcje
+                        for (int i = 0; i < 10; i++)
                         {
-                            TypTransakcji = typyTransakcji[threadLocalRandom.Next(typyTransakcji.Count)],
-                            Rozgrywki = rozgrywka,
-                            Kwota = (decimal)(threadLocalRandom.NextDouble() * 999 + 1)
-                        };
+                            var transakcja = new Transakcje
+                            {
+                                TypTransakcji = typyTransakcji[threadLocalRandom.Next(typyTransakcji.Count)],
+                                Rozgrywki = rozgrywka,
+                                Kwota = (decimal)(threadLocalRandom.NextDouble() * 999 + 1)
+                            };
 
-                        transakcjeBatch.Add(transakcja);
+                            transakcjeBatch.Add(transakcja);
+                        }
                     }
-                }
 
-                // Add the batch list to the ConcurrentBag
-                transakcjeBag.Add(transakcjeBatch);
-                Console.WriteLine($"Processed batch {batchIndex + 1}/{totalBatches} of Transakcje.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
-            }
-        });
+                    using (var context = new ApplicationDbContext(_connectionString))
+                    {
+                        await context.BulkInsertAsync(transakcjeBatch);
+                    }
+
+                    Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Transakcje.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks);
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
-            for (int batchIndex = 0; batchIndex < transakcjeBag.Count; batchIndex++)
-            {
-                var transakcjeBatch = transakcjeBag.ElementAt(batchIndex);
-                await context.BulkInsertAsync(transakcjeBatch);
-                Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Transakcje.");
-            }
-
             var transakcjeCount = await context.Transakcje.CountAsync();
-            Console.WriteLine($"Currently in db: {transakcjeCount} Transakcje entries.");
+            Console.WriteLine($"Added {transakcjeCount} Transakcje entries.");
         }
     }
 
