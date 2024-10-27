@@ -14,7 +14,7 @@ namespace MyConsoleApp.Models
         public string? Nazwisko { get; set; }
         [Range(10000000000, 99999999999)]
         public long Pesel { get; set; }
-        public DateTime PoczatekPracy { get; set; }
+        public DateOnly PoczatekPracy { get; set; }
 
         public ICollection<Rozgrywki> Rozgrywki { get; set; }
     }

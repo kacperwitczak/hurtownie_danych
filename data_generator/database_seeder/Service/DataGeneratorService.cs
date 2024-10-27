@@ -36,12 +36,12 @@ public class DataGeneratorService
                 await SeedStoly(n);
 
                 int firstYear = 2023;
-                await SeedUstawienieStolu(n,2023);
+                await SeedUstawienieStolu(n, 2023);
                 await SeedRozgrywki(2023);
                 await SeedTransakcje(2023);
 
                 int secondYear = 2024;
-                await SeedUstawienieStolu(n,2024);
+                await SeedUstawienieStolu(n, 2024);
                 await SeedRozgrywki(2024);
                 await SeedTransakcje(2024);
 
@@ -90,6 +90,7 @@ public class DataGeneratorService
         {
             await context.BulkInsertAsync(typyGier);
         }
+
         Console.WriteLine($"Added {typyGier.Count} TypGry entries.");
     }
 
@@ -106,28 +107,38 @@ public class DataGeneratorService
         {
             await context.BulkInsertAsync(typyTransakcji);
         }
+
         Console.WriteLine($"Added {typyTransakcji.Count} TypTransakcji entries.");
     }
 
     public async Task SeedKrupierzy(int n)
     {
         Console.WriteLine("Seeding Krupierzy...");
+
+        var uniquePeselSet = new HashSet<long>(); // Zbiór do przechowywania unikalnych numerów PESEL
         var fakerKrupierzy = new Faker<Krupierzy>()
             .RuleFor(k => k.Imie, f => f.Person.FirstName)
             .RuleFor(k => k.Nazwisko, f => f.Person.LastName)
-            .RuleFor(k => k.Pesel, f => long.Parse(f.Random.ReplaceNumbers("###########")))
-            .RuleFor(k => k.PoczatekPracy, f => f.Date.Past(1));
+            .RuleFor(k => k.Pesel,
+                f => GenerateUniquePesel(uniquePeselSet)) // Wywołanie metody generującej unikalny PESEL
+            .RuleFor(k => k.PoczatekPracy, f =>
+            {
+                var year = f.Random.Int(2021, 2023); // Wybierz losowy rok od 2021 do 2023
+                var month = f.Random.Int(1, 12); // Losowy miesiąc od 1 do 12
+                var day = f.Random.Int(1, DateTime.DaysInMonth(year, month)); // Losowy dzień w danym miesiącu
+                return DateOnly.FromDateTime(new DateTime(year, month, day)); // Zwróć DateOnly
+            });
 
-        var krupierzy = new List<Krupierzy>();
-
-        krupierzy.AddRange(fakerKrupierzy.Generate(n*n*n));
+        var krupierzy = fakerKrupierzy.Generate(n * n * n).ToList();
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
             await context.BulkInsertAsync(krupierzy);
         }
+
         Console.WriteLine($"Added {krupierzy.Count} Krupierzy entries.");
     }
+
 
     public async Task SeedLokalizacje(int n)
     {
@@ -154,6 +165,7 @@ public class DataGeneratorService
         {
             await context.BulkInsertAsync(lokalizacje);
         }
+
         Console.WriteLine($"Added {lokalizacje.Count} Lokalizacje entries.");
     }
 
@@ -175,12 +187,13 @@ public class DataGeneratorService
 
         var stoly = new List<Stoly>();
 
-        stoly.AddRange(fakerStoly.Generate(n*n*n));
+        stoly.AddRange(fakerStoly.Generate(n * n * n));
 
         using (var context = new ApplicationDbContext(_connectionString))
         {
             await context.BulkInsertAsync(stoly);
         }
+
         Console.WriteLine($"Added {stoly.Count} Stoly entries.");
     }
 
@@ -208,8 +221,8 @@ public class DataGeneratorService
             {
                 var ustawienieStolu = new UstawienieStolu
                 {
-                    DataStart = month.FirstDay,
-                    DataKoniec = month.LastDay,
+                    DataStart = month.FirstDay.AddMilliseconds(-month.FirstDay.Millisecond),
+                    DataKoniec = month.LastDay.AddMilliseconds(-month.LastDay.Millisecond),
                     Stoly = stolyList[(i + offset) % stolyList.Count],
                     Lokalizacje = lokalizacjeList[(i + offset) % lokalizacjeList.Count]
                 };
@@ -221,96 +234,117 @@ public class DataGeneratorService
         using (var context = new ApplicationDbContext(_connectionString))
         {
             await context.BulkInsertAsync(ustawienia);
-            Console.WriteLine($"Currently in db: {await context.UstawienieStolu.CountAsync() } UstawienieStolu entries.");
+            Console.WriteLine(
+                $"Currently in db: {await context.UstawienieStolu.CountAsync()} UstawienieStolu entries.");
         }
     }
 
-    public async Task SeedRozgrywki(int year)
+public async Task SeedRozgrywki(int year)
+{
+    Console.WriteLine("Seeding Rozgrywki...");
+
+    List<UstawienieStolu> ustawieniaStolu;
+    List<Krupierzy> krupierzy;
+
+    using (var context = new ApplicationDbContext(_connectionString))
     {
-        Console.WriteLine("Seeding Rozgrywki...");
+        ustawieniaStolu = await context.UstawienieStolu
+            .AsNoTracking()
+            .Where(x => x.DataStart.Year >= year && x.DataKoniec.Value.Year <= year)
+            .ToListAsync();
+        krupierzy = await context.Krupierzy.AsNoTracking().ToListAsync();
+    }
 
-        List<UstawienieStolu> ustawieniaStolu;
-        List<Krupierzy> krupierzy;
+    var rozgrywkiList = new List<Rozgrywki>();
+    var random = new Random();
 
-        using (var context = new ApplicationDbContext(_connectionString))
+    // Stworzenie słowników do przechowywania zarejestrowanych rozgrywek
+    var krupierBusy = new Dictionary<Krupierzy, List<(DateTime start, DateTime end)>>();
+    var ustawienieBusy = new Dictionary<UstawienieStolu, List<(DateTime start, DateTime end)>>();
+    
+    foreach (var ustawienie in ustawieniaStolu)
+    {
+        var startDate = ustawienie.DataStart;
+        var endDate = ustawienie.DataKoniec.Value;
+
+        for (var day = startDate; day <= endDate; day = day.AddDays(1))
         {
-            ustawieniaStolu = await context.UstawienieStolu
-                .AsNoTracking()
-                .Where(x => x.DataStart.Year >= year && x.DataKoniec.Value.Year <= year)
-                .ToListAsync();
-            krupierzy = await context.Krupierzy.AsNoTracking().ToListAsync();
-        }
-
-        var batchSize = 500;
-        var batches = ustawieniaStolu
-            .Select((item, index) => new { item, index })
-            .GroupBy(x => x.index / batchSize)
-            .Select(g => g.Select(x => x.item).ToList())
-            .ToList();
-
-        var totalBatches = batches.Count;
-
-        // ConcurrentBag to hold all lists of rozgrywki batches
-        var rozgrywkiBag = new ConcurrentBag<List<Rozgrywki>>();
-
-        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
-
-        Parallel.ForEach(batches, options, (batchUstawienia, state, batchIndex) =>
-        {
-            try
+            for (int i = 0; i < 10; i++)
             {
-                var rozgrywkiBatch = new List<Rozgrywki>();
-                var threadLocalRandom = new Random();
+                // Losowanie godziny rozpoczęcia rozgrywki
+                var godzinaStart = random.Next(8, 24); // godziny od 8 do 23
+                var minutaStart = random.Next(0, 60); // losowa minuta
 
-                foreach (var ustawienie in batchUstawienia)
+                var rozgrywkaStart = new DateTime(day.Year, day.Month, day.Day, godzinaStart, minutaStart, 0);
+                var rozgrywkaEnd = rozgrywkaStart.AddMinutes(random.Next(1, 21)); // 1 do 20 minut
+
+                // Filtracja krupierów, którzy byli zatrudnieni przed rozpoczęciem rozgrywki
+                var availableKrupierzy = krupierzy
+                    .Where(k => k.PoczatekPracy < DateOnly.FromDateTime(rozgrywkaStart))
+                    .ToList();
+
+                // Wybór krupiera tylko jeśli są dostępni
+                if (availableKrupierzy.Count > 0)
                 {
-                    var startDate = ustawienie.DataStart;
-                    var endDate = ustawienie.DataKoniec.Value;
-
-                    for (var day = startDate; day <= endDate; day = day.AddDays(1))
+                    foreach (var krupier in availableKrupierzy)
                     {
-                        for (int i = 0; i < 10; i++)
+                        // Sprawdź, czy krupier jest już zajęty
+                        if (krupierBusy.ContainsKey(krupier) &&
+                            krupierBusy[krupier].Any(busy => 
+                                rozgrywkaStart < busy.end && rozgrywkaEnd > busy.start))
                         {
-                            var rozgrywkaStart = day.AddHours(8 + i);
-                            var rozgrywkaEnd = rozgrywkaStart.AddMinutes(threadLocalRandom.Next(1, 60));
-
-                            var rozgrywka = new Rozgrywki
-                            {
-                                DataStart = rozgrywkaStart,
-                                DataKoniec = rozgrywkaEnd,
-                                UstawienieStolu = ustawienie,
-                                Krupier = krupierzy[threadLocalRandom.Next(krupierzy.Count)]
-                            };
-
-                            rozgrywkiBatch.Add(rozgrywka);
+                            continue; // Jeśli krupier jest zajęty, przeskocz
                         }
+
+                        // Sprawdź, czy ustawienie stołu jest już zajęte
+                        if (ustawienieBusy.ContainsKey(ustawienie) &&
+                            ustawienieBusy[ustawienie].Any(busy =>
+                                rozgrywkaStart < busy.end && rozgrywkaEnd > busy.start))
+                        {
+                            continue; // Jeśli ustawienie stołu jest zajęte, przeskocz
+                        }
+
+                        // Jeśli nie ma konfliktów, dodaj rozgrywkę
+                        var rozgrywka = new Rozgrywki
+                        {
+                            DataStart = rozgrywkaStart,
+                            DataKoniec = rozgrywkaEnd,
+                            UstawienieStolu = ustawienie,
+                            Krupier = krupier
+                        };
+
+                        rozgrywkiList.Add(rozgrywka);
+
+                        // Dodaj zajęte godziny do słowników
+                        if (!krupierBusy.ContainsKey(krupier))
+                        {
+                            krupierBusy[krupier] = new List<(DateTime, DateTime)>();
+                        }
+                        krupierBusy[krupier].Add((rozgrywkaStart, rozgrywkaEnd));
+
+                        if (!ustawienieBusy.ContainsKey(ustawienie))
+                        {
+                            ustawienieBusy[ustawienie] = new List<(DateTime, DateTime)>();
+                        }
+                        ustawienieBusy[ustawienie].Add((rozgrywkaStart, rozgrywkaEnd));
+
+                        break; // Znaleziono odpowiedniego krupiera, przerwij wewnętrzną pętlę
                     }
                 }
-
-                // Add the batch list to the ConcurrentBag
-                rozgrywkiBag.Add(rozgrywkiBatch);
-                Console.WriteLine($"Processed batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
-            }
-        });
-
-        // Inserting all batches from ConcurrentBag
-        using (var context = new ApplicationDbContext(_connectionString))
-        {
-            for (int batchIndex = 0; batchIndex < rozgrywkiBag.Count; batchIndex++)
-            {
-                var rozgrywkiBatch = rozgrywkiBag.ElementAt(batchIndex);
-                await context.BulkInsertAsync(rozgrywkiBatch);
-                Console.WriteLine($"Inserted batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
-            }
-
-            var rozgrywkiCount = await context.Rozgrywki.CountAsync();
-            Console.WriteLine($"Currently in db: {rozgrywkiCount} Rozgrywki entries.");
         }
     }
+
+    // Zapisanie rozgrywek do bazy danych
+    using (var context = new ApplicationDbContext(_connectionString))
+    {
+        await context.BulkInsertAsync(rozgrywkiList);
+        var rozgrywkiCount = await context.Rozgrywki.CountAsync();
+        Console.WriteLine($"Currently in db: {rozgrywkiCount} Rozgrywki entries.");
+    }
+}
+
+
 
     public async Task SeedTransakcje(int year)
     {
@@ -404,5 +438,17 @@ public class DataGeneratorService
         }
 
         return monthDays;
+    }
+
+    private long GenerateUniquePesel(HashSet<long> uniquePeselSet)
+    {
+        long pesel;
+
+        do
+        {
+            pesel = long.Parse(new Faker().Random.ReplaceNumbers("###########"));
+        } while (!uniquePeselSet.Add(pesel)); // Dodaj do zbioru i sprawdź unikalność
+
+        return pesel;
     }
 }

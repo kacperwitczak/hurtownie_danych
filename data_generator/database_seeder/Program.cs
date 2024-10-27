@@ -4,7 +4,7 @@ using System.Diagnostics;
 Process currentProcess = Process.GetCurrentProcess();
 currentProcess.PriorityClass = ProcessPriorityClass.High;
 
-var conn = "data source=laptopkacper;initial catalog=Kasyno_prod;Integrated Security=True;TrustServerCertificate=True;";
+var conn = "Data Source=(localdb)\\localDB;Initial Catalog=Kasyno_prod;Integrated Security=True;TrustServerCertificate=True;";
 
 var DbContext = new ApplicationDbContext(conn);
 
