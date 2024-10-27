@@ -239,7 +239,7 @@ public class DataGeneratorService
         }
     }
 
-public async Task SeedRozgrywki(int year)
+    public async Task SeedRozgrywki(int year)
 {
     Console.WriteLine("Seeding Rozgrywki...");
 
@@ -252,97 +252,126 @@ public async Task SeedRozgrywki(int year)
             .AsNoTracking()
             .Where(x => x.DataStart.Year >= year && x.DataKoniec.Value.Year <= year)
             .ToListAsync();
+
         krupierzy = await context.Krupierzy.AsNoTracking().ToListAsync();
     }
 
-    var rozgrywkiList = new List<Rozgrywki>();
-    var random = new Random();
+    var batchSize = 500; // Reduced batch size for more manageable processing
+    var batches = ustawieniaStolu
+        .Select((item, index) => new { item, index })
+        .GroupBy(x => x.index / batchSize)
+        .Select(g => g.Select(x => x.item).ToList())
+        .ToList();
 
-    // Stworzenie słowników do przechowywania zarejestrowanych rozgrywek
-    var krupierBusy = new Dictionary<Krupierzy, List<(DateTime start, DateTime end)>>();
-    var ustawienieBusy = new Dictionary<UstawienieStolu, List<(DateTime start, DateTime end)>>();
-    
-    foreach (var ustawienie in ustawieniaStolu)
+    var totalBatches = batches.Count;
+
+    // ConcurrentBag to hold all lists of rozgrywki batches
+    var rozgrywkiBag = new ConcurrentBag<List<Rozgrywki>>();
+
+    var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+    // Concurrent dictionaries to track busy times for dealers and table settings
+    var krupierBusy = new ConcurrentDictionary<Krupierzy, List<(DateTime start, DateTime end)>>();
+    var ustawienieBusy = new ConcurrentDictionary<UstawienieStolu, List<(DateTime start, DateTime end)>>();
+
+    Parallel.ForEach(batches, options, (batchUstawienia, state, batchIndex) =>
     {
-        var startDate = ustawienie.DataStart;
-        var endDate = ustawienie.DataKoniec.Value;
-
-        for (var day = startDate; day <= endDate; day = day.AddDays(1))
+        try
         {
-            for (int i = 0; i < 10; i++)
+            var rozgrywkiBatch = new List<Rozgrywki>();
+            var threadLocalRandom = new Random(); // Create a thread-local Random instance
+
+            foreach (var ustawienie in batchUstawienia)
             {
-                // Losowanie godziny rozpoczęcia rozgrywki
-                var godzinaStart = random.Next(8, 24); // godziny od 8 do 23
-                var minutaStart = random.Next(0, 60); // losowa minuta
+                var startDate = ustawienie.DataStart;
+                var endDate = ustawienie.DataKoniec.Value;
 
-                var rozgrywkaStart = new DateTime(day.Year, day.Month, day.Day, godzinaStart, minutaStart, 0);
-                var rozgrywkaEnd = rozgrywkaStart.AddMinutes(random.Next(1, 21)); // 1 do 20 minut
-
-                // Filtracja krupierów, którzy byli zatrudnieni przed rozpoczęciem rozgrywki
-                var availableKrupierzy = krupierzy
-                    .Where(k => k.PoczatekPracy < DateOnly.FromDateTime(rozgrywkaStart))
-                    .ToList();
-
-                // Wybór krupiera tylko jeśli są dostępni
-                if (availableKrupierzy.Count > 0)
+                for (var day = startDate; day <= endDate; day = day.AddDays(1))
                 {
-                    foreach (var krupier in availableKrupierzy)
+                    for (int i = 0; i < 10; i++)
                     {
-                        // Sprawdź, czy krupier jest już zajęty
-                        if (krupierBusy.ContainsKey(krupier) &&
-                            krupierBusy[krupier].Any(busy => 
-                                rozgrywkaStart < busy.end && rozgrywkaEnd > busy.start))
+                        // Generate start time and duration
+                        var godzinaStart = 8 + i; // Start from 8 AM
+                        var rozgrywkaStart = new DateTime(day.Year, day.Month, day.Day, godzinaStart, 0, 0);
+                        var rozgrywkaEnd = rozgrywkaStart.AddMinutes(threadLocalRandom.Next(1, 60));
+
+                        // Select available dealers
+                        var availableKrupierzy = krupierzy
+                            .Where(k => k.PoczatekPracy < DateOnly.FromDateTime(rozgrywkaStart))
+                            .ToList();
+
+                        foreach (var krupier in availableKrupierzy)
                         {
-                            continue; // Jeśli krupier jest zajęty, przeskocz
+                            // Check if dealer is busy
+                            var isKrupierBusy = krupierBusy.ContainsKey(krupier) &&
+                                                krupierBusy[krupier].Any(busy =>
+                                                    rozgrywkaStart < busy.end && rozgrywkaEnd > busy.start);
+
+                            // Check if table setting is busy
+                            var isUstawienieBusy = ustawienieBusy.ContainsKey(ustawienie) &&
+                                                    ustawienieBusy[ustawienie].Any(busy =>
+                                                        rozgrywkaStart < busy.end && rozgrywkaEnd > busy.start);
+
+                            if (!isKrupierBusy && !isUstawienieBusy)
+                            {
+                                // If not busy, create the game
+                                var rozgrywka = new Rozgrywki
+                                {
+                                    DataStart = rozgrywkaStart,
+                                    DataKoniec = rozgrywkaEnd,
+                                    UstawienieStolu = ustawienie,
+                                    Krupier = krupier
+                                };
+
+                                rozgrywkiBatch.Add(rozgrywka);
+
+                                // Add busy times to the dictionaries
+                                krupierBusy.AddOrUpdate(krupier, new List<(DateTime, DateTime)> { (rozgrywkaStart, rozgrywkaEnd) },
+                                    (key, existingList) =>
+                                    {
+                                        existingList.Add((rozgrywkaStart, rozgrywkaEnd));
+                                        return existingList;
+                                    });
+
+                                ustawienieBusy.AddOrUpdate(ustawienie, new List<(DateTime, DateTime)> { (rozgrywkaStart, rozgrywkaEnd) },
+                                    (key, existingList) =>
+                                    {
+                                        existingList.Add((rozgrywkaStart, rozgrywkaEnd));
+                                        return existingList;
+                                    });
+
+                                break; // Found a suitable dealer, exit the loop
+                            }
                         }
-
-                        // Sprawdź, czy ustawienie stołu jest już zajęte
-                        if (ustawienieBusy.ContainsKey(ustawienie) &&
-                            ustawienieBusy[ustawienie].Any(busy =>
-                                rozgrywkaStart < busy.end && rozgrywkaEnd > busy.start))
-                        {
-                            continue; // Jeśli ustawienie stołu jest zajęte, przeskocz
-                        }
-
-                        // Jeśli nie ma konfliktów, dodaj rozgrywkę
-                        var rozgrywka = new Rozgrywki
-                        {
-                            DataStart = rozgrywkaStart,
-                            DataKoniec = rozgrywkaEnd,
-                            UstawienieStolu = ustawienie,
-                            Krupier = krupier
-                        };
-
-                        rozgrywkiList.Add(rozgrywka);
-
-                        // Dodaj zajęte godziny do słowników
-                        if (!krupierBusy.ContainsKey(krupier))
-                        {
-                            krupierBusy[krupier] = new List<(DateTime, DateTime)>();
-                        }
-                        krupierBusy[krupier].Add((rozgrywkaStart, rozgrywkaEnd));
-
-                        if (!ustawienieBusy.ContainsKey(ustawienie))
-                        {
-                            ustawienieBusy[ustawienie] = new List<(DateTime, DateTime)>();
-                        }
-                        ustawienieBusy[ustawienie].Add((rozgrywkaStart, rozgrywkaEnd));
-
-                        break; // Znaleziono odpowiedniego krupiera, przerwij wewnętrzną pętlę
                     }
                 }
             }
-        }
-    }
 
-    // Zapisanie rozgrywek do bazy danych
+            // Add the batch list to the ConcurrentBag
+            rozgrywkiBag.Add(rozgrywkiBatch);
+            Console.WriteLine($"Processed batch {batchIndex + 1}/{totalBatches} of Rozgrywki.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing batch {batchIndex + 1}: {ex.Message}");
+        }
+    });
+
+    // Inserting all batches from ConcurrentBag into the database
     using (var context = new ApplicationDbContext(_connectionString))
     {
-        await context.BulkInsertAsync(rozgrywkiList);
+        for (int batchIndex = 0; batchIndex < rozgrywkiBag.Count; batchIndex++)
+        {
+            var rozgrywkiBatch = rozgrywkiBag.ElementAt(batchIndex);
+            await context.BulkInsertAsync(rozgrywkiBatch);
+            Console.WriteLine($"Inserted batch {batchIndex + 1}/{rozgrywkiBag.Count} of Rozgrywki.");
+        }
+
         var rozgrywkiCount = await context.Rozgrywki.CountAsync();
         Console.WriteLine($"Currently in db: {rozgrywkiCount} Rozgrywki entries.");
     }
 }
+
 
 
 
