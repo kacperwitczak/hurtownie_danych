@@ -126,8 +126,8 @@ namespace database_seeder.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     FK_KrupierID = table.Column<int>(type: "int", nullable: false),
                     FK_UstawienieStoluID = table.Column<int>(type: "int", nullable: false),
-                    DataStart = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    DataKoniec = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    DataStart = table.Column<DateTime>(type: "datetime2(0)", nullable: false),
+                    DataKoniec = table.Column<DateTime>(type: "datetime2(0)", nullable: false)
                 },
                 constraints: table =>
                 {
