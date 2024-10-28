@@ -4528,24 +4528,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Adam\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "C:\\Users\\kacpe\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Adam\\RiderProjects\\hurtownie_danych\\data_generator\\database_seeder\\database_seeder.csproj",
+      "projectUniqueName": "D:\\hurtownie danych\\data_generator\\hurtownie_danych\\data_generator\\database_seeder\\database_seeder.csproj",
       "projectName": "database_seeder",
-      "projectPath": "C:\\Users\\Adam\\RiderProjects\\hurtownie_danych\\data_generator\\database_seeder\\database_seeder.csproj",
-      "packagesPath": "C:\\Users\\Adam\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Adam\\RiderProjects\\hurtownie_danych\\data_generator\\database_seeder\\obj\\",
+      "projectPath": "D:\\hurtownie danych\\data_generator\\hurtownie_danych\\data_generator\\database_seeder\\database_seeder.csproj",
+      "packagesPath": "C:\\Users\\kacpe\\.nuget\\packages\\",
+      "outputPath": "D:\\hurtownie danych\\data_generator\\hurtownie_danych\\data_generator\\database_seeder\\obj\\",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\Adam\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Users\\kacpe\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
