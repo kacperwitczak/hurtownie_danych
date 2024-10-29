@@ -8,12 +8,10 @@ var conn = "Data Source=laptopkacper;Initial Catalog=Kasyno_prod;Integrated Secu
 
 var DbContext = new ApplicationDbContext(conn);
 
-Console.WriteLine("Seeding database...");
-
 var stopwatch = Stopwatch.StartNew();
 
 var seedService = new DataGeneratorService(conn);
-await seedService.Seed();
+//await seedService.Seed();
 
 stopwatch.Stop();
 

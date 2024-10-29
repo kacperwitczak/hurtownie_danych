@@ -9,7 +9,7 @@ using System.Threading;
 public class DataGeneratorService
 {
     private readonly string _connectionString;
-    private readonly int n = 3;
+    private readonly int n = 2;
 
     public DataGeneratorService(string connectionString)
     {
@@ -51,7 +51,6 @@ public class DataGeneratorService
 
     public async Task ClearDatabase()
     {
-        Console.WriteLine("Clearing database...");
         using (var context = new ApplicationDbContext(_connectionString))
         {
             Console.WriteLine("Clearing database...");
@@ -216,7 +215,7 @@ public class DataGeneratorService
                     DataStart = month.FirstDay.AddMilliseconds(-month.FirstDay.Millisecond),
                     DataKoniec = month.LastDay.AddMilliseconds(-month.LastDay.Millisecond),
                     Stoly = stolyList[(i + offset) % stolyList.Count],
-                    Lokalizacje = lokalizacjeList[(i + offset) % lokalizacjeList.Count]
+                    Lokalizacje = lokalizacjeList[i % lokalizacjeList.Count]
                 };
 
                 ustawienia.Add(ustawienieStolu);
@@ -321,9 +320,6 @@ public class DataGeneratorService
             Console.WriteLine($"Currently in db: {rozgrywkiCount} Rozgrywki entries.");
         }
     }
-
-
-
 
     public async Task SeedTransakcje(int year)
     {

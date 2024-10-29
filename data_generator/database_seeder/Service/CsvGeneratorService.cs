@@ -30,13 +30,13 @@ public static class CsvGeneratorService
         Parallel.For(0, rowCount, new ParallelOptions { MaxDegreeOfParallelism = threadCount }, i =>
         {
             var game = gameFaker.Generate();
-            string line = $"{game.IdAutomatu},{game.IdKartyGracza},{game.DataGry:yyyy-MM-dd},{game.RodzajGry},{game.Stawka},{game.Wygrana}";
+            string line = $"{game.IdAutomatu};{game.IdKartyGracza};{game.DataGry:yyyy-MM-dd};{game.RodzajGry};{game.Stawka};{game.Wygrana}";
             outcome.Add(line);
         });
         
         using (StreamWriter writer = new StreamWriter(filePath, false, Encoding.UTF8))
         {
-            writer.WriteLine("ID_Automatu,ID_Karty_Gracza,Data_Gry,Rodzaj_Gry,Postawiona_Stawka,Wygrana");
+            writer.WriteLine("ID_Automatu;ID_Karty_Gracza;Data_Gry;Rodzaj_Gry;Postawiona_Stawka;Wygrana");
             foreach (var line in outcome)
             {
                 writer.WriteLine(line);
@@ -71,13 +71,13 @@ public static class CsvGeneratorService
         Parallel.For(0, rowCount, new ParallelOptions { MaxDegreeOfParallelism = threadCount }, i =>
         {
             var game = gameFaker.Generate();
-            string line = $"{game.IdAutomatu},{game.IdKartyGracza},{game.DataGry:yyyy-MM-dd},{game.RodzajGry},{game.Stawka},{game.Wygrana}";
+            string line = $"{game.IdAutomatu};{game.IdKartyGracza};{game.DataGry:yyyy-MM-dd};{game.RodzajGry};{game.Stawka};{game.Wygrana}";
             outcome.Add(line);
         });
         
         using (StreamWriter writer = new StreamWriter(filePath, false, Encoding.UTF8))
         {
-            writer.WriteLine("ID_Automatu,ID_Karty_Gracza,Data_Gry,Rodzaj_Gry,Postawiona_Stawka,Wygrana");
+            writer.WriteLine("ID_Automatu;ID_Karty_Gracza;Data_Gry;Rodzaj_Gry;Postawiona_Stawka;Wygrana");
             foreach (var line in outcome)
             {
                 writer.WriteLine(line);
@@ -109,6 +109,8 @@ public static class CsvGeneratorService
         var lines = File.ReadAllLines(inputFilePath).ToList();
         
         // update of dimension attribute
+        games = games.Select(x => x == "Fruit Fiesta" ? "Fruity Slots" : x).ToArray();
+
         for (int i = 1; i < lines.Count; i++)
         {
             if (lines[i].Contains("Fruit Fiesta"))
@@ -122,7 +124,7 @@ public static class CsvGeneratorService
         Parallel.For(0, additionalRowCount, new ParallelOptions { MaxDegreeOfParallelism = threadCount }, i =>
         {
             var game = gameFaker.Generate();
-            string line = $"{game.IdAutomatu},{game.IdKartyGracza},{game.DataGry:yyyy-MM-dd},{game.RodzajGry},{game.Stawka},{game.Wygrana}";
+            string line = $"{game.IdAutomatu};{game.IdKartyGracza};{game.DataGry:yyyy-MM-dd};{game.RodzajGry};{game.Stawka};{game.Wygrana}";
             additionalRows.Add(line);
         });
         
